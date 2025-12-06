@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Loan Repayment Tracker — Calendar + Analytics</title>
+<style>
+  :root{--bg:#f6f7fb;--card:#fff;--muted:#6b7280;--accent:#2563eb;--success:#059669;--danger:#dc2626;--radius:12px;}
+  *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
+  body{margin:0;background:var(--bg);color:#0f172a;padding:18px;}
+  .wrap{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:340px 1fr;gap:18px;}
+  header{grid-column:1/-1;margin-bottom:6px}
+  h1{margin:0;font-size:20px}
+  p.sub{margin:6px 0 0;color:var(--muted);font-size:13px}
+  .card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:0 6px 18px rgba(12,17,23,0.06)}
+  label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+  input[type="text"], input[type="number"], input[type="date"], textarea, select {
+    width:100%;padding:9px;border:1px solid #e6e9ef;border-radius:10px;font-size:14px;
+  }
+  textarea{min-height:70px;resize:vertical}
+  .btn{display:inline-block;padding:8px 12px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;}
+  .btn.ghost{background:#fff;color:var(--muted);border:1px solid #e6e9ef}
+  .btn.warn{background:#f59e0b}
+  .btn.danger{background:var(--danger)}
+  .loan-list{margin-top:12px;max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+  .loan-item{padding:10px;border-radius:10px;border:1px solid #eef2ff;background:linear-gradient(180deg,#fff,#fbfdff);display:flex;justify-content:space-between;align-items:center}
+  .loan-item .meta{font-size:13px}
+  .loan-item .actions button{margin-left:8px}
+  .right{display:flex;flex-direction:column;gap:12px}
+  .summary-row{display:flex;gap:12px;align-items:center;justify-content:space-between}
+  .grid-3{display:grid;grid-template-columns:1fr 320px;gap:12px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  thead th{background:#fafafa;position:sticky;top:0;padding:10px;text-align:left;border-bottom:1px solid #eee}
+  tbody td{padding:10px;border-bottom:1px solid #f3f4f6}
+  .small{font-size:12px;color:var(--muted)}
+  .muted{color:var(--muted)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  .flex{display:flex;gap:8px;align-items:center}
+  .center{text-align:center}
+  /* calendar */
+  .calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal-cell{min-height:86px;padding:8px;border-radius:8px;border:1px solid #eef2f6;background:#fff;position:relative;font-size:13px}
+  .cal-daynum{position:absolute;top:6px;right:8px;font-size:12px;color:var(--muted)}
+  .badge{display:inline-block;padding:4px 6px;border-radius:999px;font-size:11px;background:#eef2ff;color:#0b3a8c;margin-top:6px}
+  .cal-header{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+  .cal-header div{text-align:center;font-size:12px;color:var(--muted)}
+  .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .chart-row{display:flex;gap:8px;align-items:flex-end;height:80px;padding:8px}
+  .bar{flex:1;margin:0 4px;border-radius:6px;background:linear-gradient(180deg,#a5b4fc,#6366f1);display:flex;align-items:flex-end;justify-content:center;color:#fff;font-size:11px;padding-bottom:6px}
+  @media (max-width:980px){
+    .wrap{grid-template-columns:1fr; padding-bottom:80px;}
+    .grid-3{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Loan Repayment Tracker — Calendar + Analytics</h1>
+      <p class="sub">Daily calendar view, full history, interest (% per year), and analytics. Local data (browser storage).</p>
+    </header>
+
+    <!-- LEFT: Loan creation + list -->
+    <aside class="card">
+      <div>
+        <label>New loan name</label>
+        <input id="loanName" type="text" placeholder="e.g., Car loan" />
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Principal amount</label>
+        <input id="loanPrincipal" type="number" placeholder="10000" min="0" step="0.01" />
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Annual interest rate (%) — e.g., 8.5</label>
+        <input id="loanInterest" type="number" placeholder="Annual % (optional)" min="0" step="0.01" />
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Start date</label>
+        <input id="loanStart" type="date" />
+      </div>
+
+      <div style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="loanNotes" placeholder="Lender, contact, terms..."></textarea>
+      </div>
+
+      <div style="margin-top:10px" class="controls">
+        <button id="createLoan" class="btn">Create loan</button>
+        <button id="clearLoan" class="btn ghost">Clear</button>
+      </div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid #f0f2f6">
+
+      <div>
+        <div class="small muted">Your loans</div>
+        <div id="loanList" class="loan-list"></div>
+      </div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid #f0f2f6">
+
+      <div class="small muted">Import / Export</div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <input id="importFile" type="file" accept=".json" style="display:none"/>
+        <button id="btnImport" class="btn ghost">Import JSON</button>
+        <button id="exportAll" class="btn ghost">Export All JSON</button>
+        <button id="clearAll" class="btn danger">Clear All</button>
+      </div>
+    </aside>
+
+    <!-- RIGHT: Details, calendar, history, analytics -->
+    <main class="right">
+      <div class="card" id="loanDetailsCard">
+        <div id="emptyState" class="center muted">Select a loan on the left to view details, calendar and analytics.</div>
+
+        <div id="loanDetails" style="display:none">
+          <div class="summary-row">
+            <div>
+              <div style="display:flex;gap:12px;align-items:baseline">
+                <h2 id="loanTitle" style="margin:0;font-size:18px"></h2>
+                <div class="small muted" id="loanStartLabel"></div>
+              </div>
+              <div class="small muted" id="loanNotesLabel"></div>
+              <div class="small muted" id="loanInterestLabel"></div>
+            </div>
+
+            <div style="text-align:right">
+              <div class="small muted">Paid</div>
+              <div style="font-weight:700;font-size:18px" id="loanPaid">₹0.00</div>
+              <div class="small muted">Remaining <span id="loanRemaining">₹0.00</span></div>
+            </div>
+          </div>
+
+          <hr style="margin:12px 0;border:none;border-top:1px solid #f0f2f6">
+
+          <div class="grid-3">
+            <!-- Payment form -->
+            <form id="paymentForm" onsubmit="return false" class="card" style="padding:12px">
+              <div style="font-weight:600;margin-bottom:8px">Add repayment (click a date in calendar to pre-fill)</div>
+              <div style="display:flex;gap:8px">
+                <input id="payDate" type="date" style="flex:1" />
+                <input id="payAmount" type="number" placeholder="Amount" min="0" step="0.01" style="width:120px" />
+              </div>
+              <div style="margin-top:8px">
+                <input id="payNote" type="text" placeholder="Note (optional)" />
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <button id="addPaymentBtn" class="btn">Add payment</button>
+                <button id="payRemainingBtn" class="btn ghost">Pay remaining</button>
+              </div>
+            </form>
+
+            <!-- Quick actions & analytics -->
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="card">
+                <div class="small muted">Quick actions</div>
+                <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+                  <button id="exportCsv" class="btn ghost">Export CSV</button>
+                  <button id="exportJson" class="btn ghost">Export JSON</button>
+                  <button id="copyJson" class="btn ghost">Copy JSON</button>
+                  <button id="duplicateLoan" class="btn ghost">Duplicate</button>
+                  <button id="deleteLoan" class="btn danger">Delete</button>
+                </div>
+              </div>
+
+              <div class="card small muted">
+                <div style="margin-bottom:6px;font-weight:600">Analytics</div>
+                <div>Entries: <strong id="entryCount">0</strong></div>
+                <div style="margin-top:6px">Principal: <strong id="principalLabel">₹0.00</strong></div>
+                <div style="margin-top:6px">Average payment: <strong id="avgPayment">₹0.00</strong></div>
+                <div style="margin-top:6px">% Paid: <strong id="pctPaid">0%</strong></div>
+                <div style="margin-top:6px">Estimated interest accrued: <strong id="interestAccrued">₹0.00</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar -->
+          <div style="margin-top:14px" class="card">
+            <div class="nav">
+              <div style="display:flex;gap:8px;align-items:center">
+                <button id="prevMonth" class="btn ghost">&larr;</button>
+                <div style="font-weight:700" id="monthLabel">Month</div>
+                <button id="nextMonth" class="btn ghost">&rarr;</button>
+              </div>
+              <div class="small muted">Click a date to add payment there</div>
+            </div>
+
+            <div class="cal-header">
+              <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+            </div>
+            <div id="calendar" class="calendar"></div>
+          </div>
+
+          <!-- Chart + history -->
+          <div style="margin-top:14px" class="card">
+            <div style="font-weight:600;margin-bottom:8px">Payments — last 6 months</div>
+            <div id="chartRow" class="chart-row"></div>
+            <div style="margin-top:12px;font-weight:600;margin-bottom:6px">Repayment history (newest first)</div>
+            <div style="overflow:auto;max-height:240px">
+              <table id="historyTable" aria-live="polite">
+                <thead>
+                  <tr><th>Date</th><th>Amount</th><th>Note</th><th style="width:90px">Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div style="height:8px"></div>
+      <div class="card small muted center">Local-only app — export JSON to move to another device.</div>
+    </main>
+  </div>
+
+<script>
+/*
+  Loan Repayment Tracker — Calendar + Analytics
+  - Full single-file implementation
+  - Interest calculation: daily compounding on reducing principal between payments (approximate, uses actual dates)
+  - Calendar: shows badges per day with sum of payments
+  - Chart: simple bar chart using div heights for last 6 months
+*/
+
+(function(){
+  const STORAGE_KEY = 'loan_tracker_v2_full';
+  const uid = ()=>Math.random().toString(36).slice(2,9);
+  const todayISO = ()=>new Date().toISOString().slice(0,10);
+  const formatter = new Intl.NumberFormat(undefined, { style:'currency', currency: (Intl.NumberFormat().resolvedOptions().currency || 'INR'), maximumFractionDigits:2 });
+
+  // Elements
+  const loanName = document.getElementById('loanName');
+  const loanPrincipal = document.getElementById('loanPrincipal');
+  const loanStart = document.getElementById('loanStart');
+  const loanNotes = document.getElementById('loanNotes');
+  const loanInterest = document.getElementById('loanInterest');
+  const createLoanBtn = document.getElementById('createLoan');
+  const clearLoanBtn = document.getElementById('clearLoan');
+  const loanListEl = document.getElementById('loanList');
+
+  const loanDetails = document.getElementById('loanDetails');
+  const emptyState = document.getElementById('emptyState');
+  const loanTitle = document.getElementById('loanTitle');
+  const loanStartLabel = document.getElementById('loanStartLabel');
+  const loanNotesLabel = document.getElementById('loanNotesLabel');
+  const loanInterestLabel = document.getElementById('loanInterestLabel');
+  const loanPaid = document.getElementById('loanPaid');
+  const loanRemaining = document.getElementById('loanRemaining');
+  const principalLabel = document.getElementById('principalLabel');
+  const entryCount = document.getElementById('entryCount');
+  const avgPaymentEl = document.getElementById('avgPayment');
+  const pctPaidEl = document.getElementById('pctPaid');
+  const interestAccruedEl = document.getElementById('interestAccrued');
+
+  const payDate = document.getElementById('payDate');
+  const payAmount = document.getElementById('payAmount');
+  const payNote = document.getElementById('payNote');
+  const addPaymentBtn = document.getElementById('addPaymentBtn');
+  const payRemainingBtn = document.getElementById('payRemainingBtn');
+
+  const historyBody = document.querySelector('#historyTable tbody');
+  const exportCsvBtn = document.getElementById('exportCsv');
+  const exportJsonBtn = document.getElementById('exportJson');
+  const copyJsonBtn = document.getElementById('copyJson');
+  const duplicateLoanBtn = document.getElementById('duplicateLoan');
+  const deleteLoanBtn = document.getElementById('deleteLoan');
+
+  const prevMonthBtn = document.getElementById('prevMonth');
+  const nextMonthBtn = document.getElementById('nextMonth');
+  const monthLabel = document.getElementById('monthLabel');
+  const calendarEl = document.getElementById('calendar');
+  const chartRow = document.getElementById('chartRow');
+
+  const btnImport = document.getElementById('btnImport');
+  const importFile = document.getElementById('importFile');
+  const exportAllBtn = document.getElementById('exportAll');
+  const clearAllBtn = document.getElementById('clearAll');
+
+  // state
+  let state = loadState();
+  if(!state.loans) state.loans = [];
+  let selectedLoanId = null;
+  let calendarDate = new Date(); // current month view
+
+  // init UI
+  loanStart.value = todayISO();
+  payDate.value = todayISO();
+  renderLoanList();
+  renderSelectedLoan();
+
+  // event listeners
+  createLoanBtn.addEventListener('click', ()=> {
+    const name = loanName.value.trim();
+    const principal = parseFloat(loanPrincipal.value || 0);
+    const start = loanStart.value || todayISO();
+    const notes = loanNotes.value.trim();
+    const interest = parseFloat(loanInterest.value || 0) || 0;
+    if(!name || isNaN(principal) || principal <= 0){ return alert('Please provide valid loan name and principal.'); }
+    const loan = { id: uid(), name, principal: Number(principal.toFixed(2)), start, notes, interest: Number(interest), history: [] };
+    state.loans.unshift(loan);
+    saveState();
+    loanName.value=''; loanPrincipal.value=''; loanNotes.value=''; loanInterest.value=''; loanStart.value = todayISO();
+    selectedLoanId = loan.id;
+    renderLoanList(); renderSelectedLoan();
+  });
+
+  clearLoanBtn.addEventListener('click', ()=> { loanName.value=''; loanPrincipal.value=''; loanNotes.value=''; loanInterest.value=''; loanStart.value = todayISO(); });
+
+  addPaymentBtn.addEventListener('click', ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    const amount = parseFloat(payAmount.value || 0);
+    const date = payDate.value || todayISO();
+    const note = payNote.value.trim();
+    if(isNaN(amount) || amount <= 0) return alert('Enter a valid payment amount.');
+    const loan = getLoan(selectedLoanId);
+    const payment = { id: uid(), date, amount: Number(amount.toFixed(2)), note };
+    // insert sorted (most recent first)
+    loan.history.unshift(payment);
+    loan.history.sort((a,b)=> b.date.localeCompare(a.date));
+    saveState(); payAmount.value=''; payNote.value=''; payDate.value = todayISO();
+    renderSelectedLoan(); renderLoanList();
+  });
+
+  payRemainingBtn.addEventListener('click', ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    const loan = getLoan(selectedLoanId);
+    const totals = computeTotals(loan);
+    if(totals.balance <= 0) return alert('Loan fully paid.');
+    payAmount.value = String(Number(totals.balance.toFixed(2)));
+  });
+
+  exportCsvBtn.addEventListener('click', ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    const loan = getLoan(selectedLoanId);
+    if(!loan.history.length) return alert('No history to export.');
+    const rows = loan.history.map(h=>({Date:h.date,Amount:h.amount,Note:h.note}));
+    downloadCSV(rows, `${sanitize(loan.name)}_history.csv`);
+  });
+
+  exportJsonBtn.addEventListener('click', ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    const loan = getLoan(selectedLoanId);
+    downloadBlob(JSON.stringify(loan, null, 2), `${sanitize(loan.name)}.json`, 'application/json');
+  });
+
+  copyJsonBtn.addEventListener('click', async ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    const loan = getLoan(selectedLoanId);
+    try{ await navigator.clipboard.writeText(JSON.stringify(loan, null, 2)); alert('Loan JSON copied to clipboard.'); }
+    catch(e){ alert('Copy failed — export JSON instead.'); }
+  });
+
+  duplicateLoanBtn.addEventListener('click', ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    const loan = getLoan(selectedLoanId);
+    const clone = JSON.parse(JSON.stringify(loan));
+    clone.id = uid(); clone.name = clone.name + ' (copy)';
+    state.loans.unshift(clone); saveState(); renderLoanList();
+    selectedLoanId = clone.id; renderSelectedLoan();
+  });
+
+  deleteLoanBtn.addEventListener('click', ()=> {
+    if(!selectedLoanId) return alert('Select a loan first.');
+    if(!confirm('Delete this loan and its history?')) return;
+    state.loans = state.loans.filter(l=> l.id !== selectedLoanId);
+    saveState(); selectedLoanId = null; renderLoanList(); renderSelectedLoan();
+  });
+
+  // month navigation
+  prevMonthBtn.addEventListener('click', ()=> { calendarDate.setMonth(calendarDate.getMonth()-1); renderCalendar(); });
+  nextMonthBtn.addEventListener('click', ()=> { calendarDate.setMonth(calendarDate.getMonth()+1); renderCalendar(); });
+
+  // import / export all
+  btnImport.addEventListener('click', ()=> importFile.click());
+  importFile.addEventListener('change', (e)=> {
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=> {
+      try{
+        const data = JSON.parse(reader.result);
+        if(Array.isArray(data)) state.loans = data.concat(state.loans || []);
+        else if(data && data.loans) state = data;
+        else if(data && data.id) state.loans.unshift(data);
+        saveState(); renderLoanList(); alert('Import complete.');
+      }catch(err){ alert('Invalid JSON file.'); }
+    };
+    reader.readAsText(f);
+    importFile.value = '';
+  });
+
+  exportAllBtn.addEventListener('click', ()=> {
+    downloadBlob(JSON.stringify(state, null, 2), 'loan_tracker_export.json', 'application/json');
+  });
+
+  clearAllBtn.addEventListener('click', ()=> {
+    if(!confirm('Clear all loans and history from this browser?')) return;
+    state = { loans: [] }; saveState(); renderLoanList(); renderSelectedLoan();
+  });
+
+  // Helpers
+  function loadState(){ try{ const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : { loans: [] }; } catch(e){ return { loans: [] }; } }
+  function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function getLoan(id){ return state.loans.find(l=> l.id === id); }
+  function sanitize(s){ return (s||'loan').replace(/[^\w\-_.]/g,'_').slice(0,60); }
+  function downloadCSV(rows, filename='data.csv'){ if(!rows || !rows.length) return; const header = Object.keys(rows[0]).join(',') + '\\n'; const body = rows.map(r => Object.values(r).map(v => '\"'+String(v).replace(/\"/g,'\"\"')+'\"').join(',')).join('\\n'); downloadBlob(header+body, filename, 'text/csv;charset=utf-8;'); }
+  function downloadBlob(content, filename, type='text/plain'){ const blob = new Blob([content], {type}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+  function formatMoney(n){ try{return formatter.format(Number(n)); }catch(e){ return Number(n).toFixed(2);} }
+
+  // render loan list
+  function renderLoanList(){
+    loanListEl.innerHTML = '';
+    if(!state.loans.length){ loanListEl.innerHTML = '<div class="small muted">No loans yet — create one.</div>'; return; }
+    state.loans.forEach(loan => {
+      const totals = computeTotals(loan);
+      const item = document.createElement('div'); item.className='loan-item';
+      item.innerHTML = `
+        <div>
+          <div style="font-weight:700">${escapeHtml(loan.name)}</div>
+          <div class="small muted meta">Principal: ${formatMoney(loan.principal)} · Paid: ${formatMoney(totals.paid)}</div>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" data-open="${loan.id}">Open</button>
+          <button class="btn ghost" data-dup="${loan.id}">Copy</button>
+          <button class="btn danger" data-del="${loan.id}">Del</button>
+        </div>
+      `;
+      loanListEl.appendChild(item);
+    });
+
+    // delegate actions
+    loanListEl.querySelectorAll('button').forEach(btn=>{
+      const openId = btn.getAttribute('data-open');
+      const delId = btn.getAttribute('data-del');
+      const dupId = btn.getAttribute('data-dup');
+      btn.addEventListener('click', ()=>{
+        if(openId){ selectedLoanId = openId; renderSelectedLoan(); scrollIntoView(openId); }
+        if(dupId){ const loan = getLoan(dupId); const clone = JSON.parse(JSON.stringify(loan)); clone.id = uid(); clone.name += ' (copy)'; state.loans.unshift(clone); saveState(); renderLoanList(); }
+        if(delId){ if(!confirm('Delete this loan and its history?')) return; state.loans = state.loans.filter(l=> l.id !== delId); if(selectedLoanId===delId) selectedLoanId=null; saveState(); renderLoanList(); renderSelectedLoan(); }
+      });
+    });
+  }
+
+  function renderSelectedLoan(){
+    if(!selectedLoanId){ loanDetails.style.display='none'; emptyState.style.display='block'; return; }
+    const loan = getLoan(selectedLoanId);
+    if(!loan){ loanDetails.style.display='none'; emptyState.style.display='block'; return; }
+    loanDetails.style.display='block'; emptyState.style.display='none';
+    loanTitle.textContent = loan.name;
+    loanStartLabel.textContent = 'Started: ' + (loan.start || '');
+    loanNotesLabel.textContent = loan.notes || '';
+    loanInterestLabel.textContent = Number(loan.interest) ? `Interest: ${Number(loan.interest)}% APR` : '';
+    principalLabel.textContent = formatMoney(loan.principal);
+
+    const totals = computeTotals(loan);
+    loanPaid.textContent = formatMoney(totals.paid);
+    loanRemaining.textContent = formatMoney(totals.balance);
+    entryCount.textContent = (loan.history || []).length;
+    avgPaymentEl.textContent = formatMoney(totals.paid / Math.max(1, (loan.history||[]).length));
+    pctPaidEl.textContent = ((loan.principal - totals.balance) / Math.max(loan.principal,0) * 100).toFixed(2) + '%';
+
+    // interest accrued approximation using daily reducing balance
+    const interestAccrued = computeInterestAccrued(loan);
+    interestAccruedEl.textContent = formatMoney(interestAccrued);
+
+    renderCalendar();
+    renderHistory();
+    renderChart();
+  }
+
+  function computeTotals(loan){
+    const paid = (loan.history || []).reduce((s,h)=> s + Number(h.amount || 0), 0);
+    const balance = Math.max(0, loan.principal - paid);
+    return { paid, balance };
+  }
+
+  // compute interest using daily reducing-balance method:
+  // iterate days from loan.start (or earliest payment date) up to today (or last payment date)
+  // between payments, interest accrues daily on current principal; payments reduce principal on the payment date.
+  function computeInterestAccrued(loan){
+    const history = (loan.history || []).slice().sort((a,b)=> a.date.localeCompare(b.date)); // oldest first
+    // daily rate
+    const apr = Number(loan.interest) || 0;
+    if(apr <= 0) return 0;
+    const dailyRate = apr / 100 / 365;
+    // start from loan.start (or earliest payment date if earlier)
+    let currentPrincipal = loan.principal;
+    // ensure we start from loan.start or earlier if payments predate start
+    const startDate = loan.start || (history[0] && history[0].date) || todayISO();
+    let lastDate = new Date(startDate + 'T00:00:00');
+    let accrued = 0;
+    for(const p of history){
+      const pDate = new Date(p.date + 'T00:00:00');
+      // accrue interest from lastDate up to pDate (not including pDate) for days difference
+      const days = Math.max(0, Math.floor((pDate - lastDate) / (24*3600*1000)));
+      if(days > 0){
+        accrued += currentPrincipal * dailyRate * days;
+      }
+      // on payment date, apply payment (we assume payment reduces principal immediately)
+      currentPrincipal = Math.max(0, currentPrincipal - Number(p.amount || 0));
+      lastDate = pDate;
+    }
+    // accrue from last payment to today
+    const today = new Date(todayISO() + 'T00:00:00');
+    const tailDays = Math.max(0, Math.floor((today - lastDate) / (24*3600*1000)));
+    if(tailDays > 0){
+      // interest accrues on remaining principal
+      const loanRemainingPrincipal = currentPrincipal;
+      accrued += loanRemainingPrincipal * dailyRate * tailDays;
+    }
+    return Number(accrued.toFixed(2));
+  }
+
+  // calendar rendering
+  function renderCalendar(){
+    const loan = getLoan(selectedLoanId);
+    if(!loan) return;
+    // compute month start/end
+    const d = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1);
+    const year = d.getFullYear(), month = d.getMonth();
+    monthLabel.textContent = d.toLocaleString(undefined, { month:'long', year:'numeric' });
+    // first day of week
+    const firstWeekday = d.getDay();
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    const cells = [];
+    // leading blanks
+    for(let i=0;i<firstWeekday;i++) cells.push(null);
+    for(let day=1; day<=daysInMonth; day++) cells.push(new Date(year, month, day));
+    // ensure full weeks (42 cells max)
+    while(cells.length % 7 !== 0) cells.push(null);
+    calendarEl.innerHTML = '';
+    // group payments by date
+    const paymentsByDate = {};
+    (loan.history || []).forEach(h => {
+      paymentsByDate[h.date] = paymentsByDate[h.date] || [];
+      paymentsByDate[h.date].push(h);
+    });
+    cells.forEach(dt => {
+      const cell = document.createElement('div'); cell.className='cal-cell';
+      if(!dt){ cell.innerHTML = ''; calendarEl.appendChild(cell); return; }
+      const iso = dt.toISOString().slice(0,10);
+      cell.innerHTML = `<div class="cal-daynum">${dt.getDate()}</div>`;
+      // if payments on this date, show badge(s)
+      if(paymentsByDate[iso]){
+        const sum = paymentsByDate[iso].reduce((s,p)=> s + Number(p.amount||0),0);
+        const badge = document.createElement('div'); badge.className='badge'; badge.textContent = `${formatMoney(sum)} (${paymentsByDate[iso].length})`;
+        cell.appendChild(badge);
+      }
+      cell.addEventListener('click', ()=> {
+        // open payment form with this date prefilled
+        payDate.value = iso; window.scrollTo({top:0, behavior:'smooth'});
+      });
+      calendarEl.appendChild(cell);
+    });
+  }
+
+  // history table
+  function renderHistory(){
+    const loan = getLoan(selectedLoanId);
+    historyBody.innerHTML = '';
+    (loan.history || []).sort((a,b)=> b.date.localeCompare(a.date)).forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(item.date)}</td><td>${formatMoney(item.amount)}</td><td>${escapeHtml(item.note||'')}</td><td class="center"><button class="btn ghost" data-del="${item.id}">Delete</button></td>`;
+      historyBody.appendChild(tr);
+    });
+    historyBody.querySelectorAll('button[data-del]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const id = btn.getAttribute('data-del');
+        if(!confirm('Delete this repayment entry?')) return;
+        const loan = getLoan(selectedLoanId);
+        loan.history = loan.history.filter(h=> h.id !== id);
+        saveState(); renderSelectedLoan(); renderLoanList();
+      });
+    });
+  }
+
+  // simple chart: last 6 months totals
+  function renderChart(){
+    const loan = getLoan(selectedLoanId);
+    chartRow.innerHTML = '';
+    const months = [];
+    const now = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1);
+    for(let i=5;i>=0;i--){
+      const m = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      months.push(m);
+    }
+    // prepare totals
+    const totals = months.map(m => {
+      const key = `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}`;
+      const sum = (loan.history || []).reduce((s,h) => {
+        const hDate = new Date(h.date + 'T00:00:00');
+        const keyH = `${hDate.getFullYear()}-${String(hDate.getMonth()+1).padStart(2,'0')}`;
+        return keyH === key ? s + Number(h.amount||0) : s;
+      }, 0);
+      return { key, sum, label: m.toLocaleString(undefined,{month:'short'}) };
+    });
+    const max = Math.max(1, ...totals.map(t=>t.sum));
+    totals.forEach(t => {
+      const bar = document.createElement('div'); bar.className='bar';
+      bar.style.height = `${(t.sum / max) * 100}%`;
+      bar.title = `${t.label}: ${formatMoney(t.sum)}`;
+      bar.innerHTML = `<div style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px">${t.label}</div>`;
+      chartRow.appendChild(bar);
+    });
+  }
+
+  // interest calculator demo (already above) — kept modular
+
+  // utilities
+  function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+  function formatMoney(n){ if(n==null) n=0; try{return formatter.format(Number(n)); }catch(e){ return Number(n).toFixed(2);} }
+  function sanitize(s){ return (s||'loan').replace(/[^\w\-_.]/g,'_').slice(0,60); }
+  function downloadCSV(rows, filename='data.csv'){ if(!rows||!rows.length) return; const header = Object.keys(rows[0]).join(',') + '\\n'; const body = rows.map(r=>Object.values(r).map(v=>'\"'+String(v).replace(/\"/g,'\"\"')+'\"').join(',')).join('\\n'); downloadBlob(header+body, filename, 'text/csv;charset=utf-8;'); }
+  function downloadBlob(content, filename, type='text/plain'){ const blob = new Blob([content], {type}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+  function scrollIntoView(id){ const btn = loanListEl.querySelector('button[data-open=\"'+id+'\"]'); if(btn) btn.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+
+  // initial selection: pick first loan if any
+  if(state.loans.length) { selectedLoanId = state.loans[0].id; renderSelectedLoan(); }
+
+  // expose for debugging
+  window.LoanTracker = { state, saveState };
+
+})();
+</script>
+</body>
+</html>
